@@ -366,6 +366,6 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## Contact
 
-Kamesh - [@kamesh_twitter](https://twitter.com/kamesh_twitter) - kameshrajanitha@gmail.com
+Kamesh - kameshrajanitha@gmail.com
 
 Project Link: [https://github.com/Silentou/EasyConnection](https://github.com/Silentou/EasyConnection)
