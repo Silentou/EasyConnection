@@ -2,20 +2,21 @@
 
 A lightweight, feature-rich Android networking library that simplifies API integrations with built-in support for request/response encryption, robust error handling, automatic retries, caching, and more.
 
-[![Maven Central](https://img.shields.io/maven-central/v/com.kamesh/easyconnectionsdk.svg)](https://search.maven.org/artifact/com.kamesh/easyconnectionsdk)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![Maven Central](https://img.shields.io/maven-central/v/com.kamesh.easyconnectionsdk/easyconnectionsdk.svg)](https://search.maven.org/artifact/com.kamesh.easyconnectionsdk/easyconnectionsdk)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ## Features
 
 - 🔒 **Request/Response Encryption** - Optional AES-256 encryption for sensitive data
 - 🔄 **Auto-Retry Logic** - Configurable retry mechanism for failed network requests
-- 💾 **Response Caching** - Built-in cache support for improved performance
+- 💾 **Response Caching** - Built-in cache support with improved control (maxAge, maxStale)
 - 🛡️ **Comprehensive Error Handling** - Type-safe API response wrapper with detailed error states
 - 📄 **Pagination Support** - Helper objects for paginated API responses
 - 🔑 **Authentication Support** - Built-in header and token-based authentication
 - 📋 **Flexible Headers** - Easily add custom headers to requests
 - 🔍 **Detailed Logging** - Optional request/response logging for debugging
 - 💻 **Modern Architecture** - Built with Kotlin, Coroutines, and Retrofit
+- 🔨 **Fluent Builder API** - Easy, readable configuration using builder pattern
 
 ## Installation
 
@@ -25,7 +26,7 @@ Add the dependency to your app's `build.gradle.kts` file:
 
 ```kotlin
 dependencies {
-    implementation("com.kamesh:easyconnectionsdk:1.0.0")
+    implementation("com.kamesh.easyconnectionsdk:easyconnectionsdk:1.0.0")
 }
 ```
 
@@ -33,7 +34,7 @@ Or if using the older Groovy syntax:
 
 ```groovy
 dependencies {
-    implementation 'com.kamesh:easyconnectionsdk:1.0.0'
+    implementation 'com.kamesh.easyconnectionsdk:easyconnectionsdk:1.0.0'
 }
 ```
 
@@ -51,13 +52,15 @@ class MyApp : Application() {
         // Initialize with application context for caching
         EasyConnectionClient.init(this)
         
-        // Configure the client
+        // Configure the client using the new Builder pattern
         EasyConnectionClient.initialize(
-            baseUrl = "https://api.example.com/",
-            enableLogging = BuildConfig.DEBUG,
-            timeoutSeconds = 30,
-            retryCount = 2,
-            cacheDurationSeconds = 60
+            "https://api.example.com/",
+            block = {
+                withLogging(BuildConfig.DEBUG)
+                withRetry(2)
+                withTimeout(30)
+                withCache(60)
+            }
         )
     }
 }
@@ -106,36 +109,70 @@ viewModelScope.launch {
 
 ## Detailed Usage
 
-### Configuration Options
+### Configuration with Builder Pattern
 
-The SDK offers many configuration options to customize its behavior:
+The SDK now offers a fluent Builder pattern for more readable configuration:
 
 ```kotlin
 EasyConnectionClient.initialize(
-    baseUrl = "https://api.example.com/",
-    
-    // Security options
-    encryptionKey = "YourSecretKey123456789012345678901234",  // Optional: For request/response encryption
-    encryptionSalt = "SaltValue",                             // Optional: Salt for encryption
-    encryptionTestMode = false,                               // Optional: Test mode for encryption
-    authToken = "Bearer your-auth-token",                     // Optional: Authentication token
-    apiKey = "your-api-key",                                  // Optional: API key
-    
-    // Performance options
-    timeoutSeconds = 30,                                      // Connection/read/write timeout
-    retryCount = 2,                                           // Number of automatic retries
-    cacheDurationSeconds = 60,                                // Cache duration in seconds
-    forceCacheEnabled = false,                                // Force cache usage
-    
-    // Debug options
-    enableLogging = BuildConfig.DEBUG,                        // Enable HTTP request/response logging
-    
-    // Misc options
-    additionalHeaders = mapOf(                                // Additional headers
-        "Device-Id" to deviceId,
-        "App-Version" to BuildConfig.VERSION_NAME
-    )
+    "https://api.example.com/",
+    block = {
+        // Security options
+        withEncryption(
+            key = "YourSecretKey123456789012345678901234", 
+            salt = "SaltValue", 
+            testMode = false
+        )
+        withAuthentication(
+            token = "Bearer your-auth-token",
+            apiKey = "your-api-key"
+        )
+        
+        // Performance options
+        withTimeout(30)
+        withRetry(2)
+        withCache(
+            durationSeconds = 60,
+            forceCache = false,
+            size = 10 * 1024 * 1024 // 10 MB
+        )
+        
+        // Debug options
+        withLogging(BuildConfig.DEBUG)
+        
+        // Misc options
+        withHeaders(mapOf(
+            "Device-Id" to deviceId,
+            "App-Version" to BuildConfig.VERSION_NAME
+        ))
+        
+        withSSL(
+            enabled = true,
+            certificatePins = listOf("sha256/...")
+        )
+    }
 )
+```
+
+You can also use the traditional approach with a Configuration object:
+
+```kotlin
+val config = EasyConnectionClient.Builder("https://api.example.com/")
+    .withLogging(true)
+    .withRetry(3)
+    .build()
+
+EasyConnectionClient.initialize(config)
+```
+
+### Custom Dispatcher for Testing
+
+The SDK now supports setting a custom dispatcher for coroutines, which is useful for testing:
+
+```kotlin
+// In your tests
+val testDispatcher = TestCoroutineDispatcher()
+EasyConnectionClient.setDispatcher(testDispatcher)
 ```
 
 ### Working with Responses
@@ -216,9 +253,13 @@ For APIs that support encrypted payloads:
 ```kotlin
 // Enable encryption in your configuration
 EasyConnectionClient.initialize(
-    baseUrl = "https://api.secure-example.com/",
-    encryptionKey = "YourSecretKey123456789012345678901234",
-    encryptionSalt = "SaltValue"
+    "https://api.secure-example.com/",
+    block = {
+        withEncryption(
+            key = "YourSecretKey123456789012345678901234",
+            salt = "SaltValue"
+        )
+    }
 )
 ```
 
@@ -226,10 +267,14 @@ For APIs that don't support encryption, you can use test mode:
 
 ```kotlin
 EasyConnectionClient.initialize(
-    baseUrl = "https://api.example.com/",
-    encryptionKey = "YourSecretKey123456789012345678901234",
-    encryptionSalt = "SaltValue",
-    encryptionTestMode = true  // Add headers but don't actually encrypt
+    "https://api.example.com/",
+    block = {
+        withEncryption(
+            key = "YourSecretKey123456789012345678901234",
+            salt = "SaltValue",
+            testMode = true  // Add headers but don't actually encrypt
+        )
+    }
 )
 ```
 
@@ -296,11 +341,11 @@ This library depends on:
 ```
 Copyright 2025 Kamesh
 
-Licensed under the Apache License, Version 2.0 (the "License");
+Licensed under the MIT License (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-   http://www.apache.org/licenses/LICENSE-2.0
+   https://opensource.org/licenses/MIT
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -323,4 +368,4 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 Kamesh - kameshrajanitha@gmail.com
 
-Project Link: [https://github.com/kamesh/EasyConnection](https://github.com/kamesh/EasyConnection)
+Project Link: [https://github.com/Silentou/EasyConnection](https://github.com/Silentou/EasyConnection)

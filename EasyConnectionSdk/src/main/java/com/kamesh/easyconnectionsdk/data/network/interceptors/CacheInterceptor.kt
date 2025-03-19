@@ -29,11 +29,13 @@ class CacheInterceptor(
             // Force network response to be cached
             CacheControl.Builder()
                 .maxAge(cacheDurationSeconds, TimeUnit.SECONDS)
+                .maxStale(0, TimeUnit.SECONDS)  // Don't accept stale responses
                 .build()
         } else {
             // Use normal cache behavior
             CacheControl.Builder()
                 .maxAge(cacheDurationSeconds, TimeUnit.SECONDS)
+                .maxStale(60, TimeUnit.SECONDS)  // Accept stale responses for up to 60s
                 .build()
         }
 

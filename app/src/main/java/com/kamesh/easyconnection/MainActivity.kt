@@ -1,14 +1,17 @@
 package com.kamesh.easyconnection
 
+import android.app.AlertDialog
+import android.app.Dialog
+import android.app.DialogFragment
 import android.os.Bundle
 import android.widget.Button
 import android.widget.TextView
-import androidx.activity.ComponentActivity
+import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import com.kamesh.easyconnectionsdk.data.network.EasyConnectionClient
 import com.kamesh.easyconnectionsdk.domain.model.ApiResponse
 import com.kamesh.easyconnectionsdk.domain.model.NetworkException
 import com.kamesh.easyconnectionsdk.domain.model.PagedResponse
-import com.kamesh.easyconnectionsdk.data.network.EasyConnectionClient
 import kotlinx.coroutines.launch
 import retrofit2.Response
 import retrofit2.http.Body
@@ -19,7 +22,7 @@ import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
 
-class MainActivity : ComponentActivity() {
+class MainActivity : AppCompatActivity() {
 
     // Define the API service interface with all methods we want to test
     interface JsonPlaceholderApi {
@@ -64,6 +67,7 @@ class MainActivity : ComponentActivity() {
         val body: String
     )
 
+    private var baseUrl = "https://jsonplaceholder.typicode.com/"
     private lateinit var resultTextView: TextView
     private lateinit var apiService: JsonPlaceholderApi
 
@@ -108,18 +112,24 @@ class MainActivity : ComponentActivity() {
         testEncryptionButton.setOnClickListener { testEncryption() }
         testRetryButton.setOnClickListener { testRetry() }
         testCacheButton.setOnClickListener { testCache() }
+
     }
 
+
     private fun initializeSDK() {
+        EasyConnectionClient.init(this)
         // Initialize with basic configuration
         EasyConnectionClient.initialize(
-            baseUrl = "https://jsonplaceholder.typicode.com/",
-            enableLogging = true,
-            additionalHeaders = mapOf("Sample-Header" to "Test-Value"),
-            retryCount = 2,
-            cacheDurationSeconds = 60,
-            forceCacheEnabled = true
+            baseUrl,
+            block = {
+                withLogging(true)
+                withRetry(2)
+                withTimeout(30)
+            }
         )
+
+            // Add other configuration options
+
     }
 
     // Basic CRUD test methods
@@ -296,8 +306,9 @@ class MainActivity : ComponentActivity() {
 
         lifecycleScope.launch {
             // Using safeApiCall for cleaner error handling
-            val result = EasyConnectionClient.safeApiCall { apiService.getPost(1) }
-
+            val result = EasyConnectionClient.safeApiCall(apiCall = {
+                apiService.getInvalidEndpoint()
+            })
             val output = StringBuilder()
             output.append("SAFE API CALL TEST\n\n")
 
@@ -335,8 +346,9 @@ class MainActivity : ComponentActivity() {
 
         lifecycleScope.launch {
             // Test with a non-existent post (will return 404)
-            val result = EasyConnectionClient.safeApiCall { apiService.getNonExistentPost() }
-
+            val result = EasyConnectionClient.safeApiCall(apiCall = {
+                apiService.getInvalidEndpoint()
+            })
             val output = StringBuilder()
             output.append("ERROR HANDLING TEST\n\n")
 
@@ -367,8 +379,9 @@ class MainActivity : ComponentActivity() {
 
         lifecycleScope.launch {
             // Test with invalid endpoint to trigger exception
-            val result = EasyConnectionClient.safeApiCall { apiService.getInvalidEndpoint() }
-
+            val result = EasyConnectionClient.safeApiCall(apiCall = {
+                apiService.getInvalidEndpoint()
+            })
             val output = StringBuilder()
             output.append("NETWORK EXCEPTION TEST\n\n")
 
@@ -410,13 +423,12 @@ class MainActivity : ComponentActivity() {
         resultTextView.text = "Testing Encryption..."
 
         // Re-initialize with encryption enabled in TEST MODE
-        EasyConnectionClient.initialize(
-            baseUrl = "https://jsonplaceholder.typicode.com/",
-            encryptionKey = "ThisIsA32ByteKeyForAES256Encryption",
-            encryptionSalt = "ExtraSalt",
-            encryptionTestMode = true, // Enable test mode for public APIs
-            enableLogging = true
+        EasyConnectionClient.Builder(
+            baseUrl = baseUrl,
         )
+            .withEncryption("ThisIsA32ByteKeyForAES256Encryption","ExtraSalt",true)
+            .withLogging(true)
+            .build()
 
         // Re-create service with updated config
         apiService = EasyConnectionClient.createService(JsonPlaceholderApi::class.java)
@@ -470,19 +482,22 @@ class MainActivity : ComponentActivity() {
         resultTextView.text = "Testing Retry Logic..."
 
         // Re-initialize with retry enabled
-        EasyConnectionClient.initialize(
-            baseUrl = "https://jsonplaceholder.typicode.com/",
-            retryCount = 3,
-            enableLogging = true
+        EasyConnectionClient.Builder(
+            baseUrl = baseUrl,
         )
+            .withRetry(3)
+            .withLogging(true)
+            .build()
+
 
         // Re-create service with updated config
         apiService = EasyConnectionClient.createService(JsonPlaceholderApi::class.java)
 
         lifecycleScope.launch {
             // Invalid endpoint to trigger retry logic
-            val result = EasyConnectionClient.safeApiCall { apiService.getInvalidEndpoint() }
-
+            val result = EasyConnectionClient.safeApiCall(apiCall = {
+                apiService.getInvalidEndpoint()
+            })
             val output = StringBuilder()
             output.append("RETRY TEST\n\n")
             output.append("Attempted with retry count: 3\n\n")
@@ -510,11 +525,12 @@ class MainActivity : ComponentActivity() {
         resultTextView.text = "Testing Cache..."
 
         // Re-initialize with caching enabled
-        EasyConnectionClient.initialize(
+        EasyConnectionClient.Builder(
             baseUrl = "https://jsonplaceholder.typicode.com/",
-            cacheDurationSeconds = 60,
-            enableLogging = true
         )
+            .withCache(60,true)
+            .withLogging(true)
+            .build()
 
         // Re-create service with updated config
         apiService = EasyConnectionClient.createService(JsonPlaceholderApi::class.java)
@@ -566,4 +582,5 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
 }
