@@ -321,6 +321,6 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## Contact
 
-Kamesh - [@kamesh_twitter](https://twitter.com/kamesh_twitter) - email@example.com
+Kamesh - kameshrajanitha@gmail.com
 
 Project Link: [https://github.com/kamesh/EasyConnection](https://github.com/kamesh/EasyConnection)
