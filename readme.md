@@ -53,11 +53,12 @@ class MyApp : Application() {
         
         // Configure the client
         EasyConnectionClient.initialize(
-            baseUrl = "https://api.example.com/",
-            enableLogging = BuildConfig.DEBUG,
-            timeoutSeconds = 30,
-            retryCount = 2,
-            cacheDurationSeconds = 60
+            baseUrl,
+            block = {
+                withLogging(BuildConfig.DEBUG)
+                withRetry(2)
+                withTimeout(30)
+            }
         )
     }
 }

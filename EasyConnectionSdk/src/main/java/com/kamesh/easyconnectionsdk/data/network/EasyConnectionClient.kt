@@ -4,16 +4,19 @@
  */
 package com.kamesh.easyconnectionsdk.data.network
 
+import android.content.Context
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
-import com.kamesh.easyconnectionsdk.domain.model.ApiResponse
 import com.kamesh.easyconnectionsdk.data.network.interceptors.AuthInterceptor
 import com.kamesh.easyconnectionsdk.data.network.interceptors.CacheInterceptor
 import com.kamesh.easyconnectionsdk.data.network.interceptors.EncryptionInterceptor
 import com.kamesh.easyconnectionsdk.data.network.interceptors.HeaderInterceptor
 import com.kamesh.easyconnectionsdk.data.network.interceptors.RetryInterceptor
+import com.kamesh.easyconnectionsdk.domain.model.ApiResponse
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.Cache
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.HttpException
@@ -23,14 +26,23 @@ import retrofit2.converter.gson.GsonConverterFactory
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.TimeUnit
-import android.content.Context
-import okhttp3.Cache
 
+/**
+ * Main entry point for Easy Connection SDK.
+ * Provides a configurable HTTP client for making API requests with features
+ * like encryption, caching, retry logic, and more.
+ */
 object EasyConnectionClient {
 
     private var retrofit: Retrofit? = null
     private var configuration: Configuration? = null
     private var appContext: Context? = null
+    private var dispatcher: CoroutineDispatcher = Dispatchers.IO
+
+    // Constants
+    private const val ERROR_NOT_INITIALIZED = "EasyConnectionClient not initialized. Call initialize() first."
+    private const val DEFAULT_TIMEOUT_SECONDS = 30L
+    private const val DEFAULT_CACHE_SIZE = 10L * 1024 * 1024 // 10 MB
 
     /**
      * Configuration class for EasyConnectionClient
@@ -42,7 +54,7 @@ object EasyConnectionClient {
         val encryptionTestMode: Boolean = false,
         val authToken: String? = null,
         val apiKey: String? = null,
-        val timeoutSeconds: Long = 30,
+        val timeoutSeconds: Long = DEFAULT_TIMEOUT_SECONDS,
         val enableLogging: Boolean = false,
         val additionalHeaders: Map<String, String> = emptyMap(),
         val retryCount: Int = 0,
@@ -50,50 +62,67 @@ object EasyConnectionClient {
         val certificatePinning: List<String> = emptyList(),
         val cacheDurationSeconds: Int = 0,
         val forceCacheEnabled: Boolean = false,
-        val cacheSize: Long = 10 * 1024 * 1024 // 10 MB default cache size
+        val cacheSize: Long = DEFAULT_CACHE_SIZE
     )
 
     /**
-     * Initialize the SDK with application context for cache support
+     * Builder class for creating Configuration objects with a fluent API
      */
-    fun init(context: Context) {
-        appContext = context.applicationContext
-    }
+    class Builder(private val baseUrl: String) {
+        private var encryptionKey: String? = null
+        private var encryptionSalt: String? = null
+        private var encryptionTestMode: Boolean = false
+        private var authToken: String? = null
+        private var apiKey: String? = null
+        private var timeoutSeconds: Long = DEFAULT_TIMEOUT_SECONDS
+        private var enableLogging: Boolean = false
+        private var additionalHeaders: Map<String, String> = emptyMap()
+        private var retryCount: Int = 0
+        private var useSSL: Boolean = true
+        private var certificatePinning: List<String> = emptyList()
+        private var cacheDurationSeconds: Int = 0
+        private var forceCacheEnabled: Boolean = false
+        private var cacheSize: Long = DEFAULT_CACHE_SIZE
 
-    /**
-     * Initialize the Retrofit client with customizable configuration
-     *
-     * @param baseUrl The base URL for all API calls (Required)
-     * @param encryptionKey The key used for request/response encryption (Optional)
-     * @param encryptionSalt Salt value used for encryption (Optional)
-     * @param authToken Authentication token to add to requests (Optional)
-     * @param apiKey API key for service authentication (Optional)
-     * @param timeoutSeconds Connection and read timeout in seconds (Default: 30)
-     * @param enableLogging Whether to enable HTTP request/response logging (Default: false)
-     * @param additionalHeaders Additional headers to add to each request (Optional)
-     * @param retryCount Number of times to retry failed requests (Default: 0)
-     * @param useSSL Whether to use SSL for connections (Default: true)
-     * @param certificatePinning List of certificate hashes for certificate pinning (Optional)
-     * @param cacheDurationSeconds Duration to cache responses in seconds (Default: 0, no cache)
-     * @param forceCacheEnabled Whether to force response caching (Default: false)
-     */
-    fun initialize(
-        baseUrl: String,
-        encryptionKey: String? = null,
-        encryptionSalt: String? = null,
-        encryptionTestMode: Boolean = false,
-        authToken: String? = null,
-        apiKey: String? = null,
-        timeoutSeconds: Long = 30,
-        enableLogging: Boolean = false,
-        additionalHeaders: Map<String, String> = emptyMap(),
-        retryCount: Int = 0,
-        useSSL: Boolean = true,
-        certificatePinning: List<String> = emptyList(),
-        cacheDurationSeconds: Int = 0,
-        forceCacheEnabled: Boolean = false
-    ) {
-        val config = Configuration(
+        fun withEncryption(key: String, salt: String? = null, testMode: Boolean = false) = apply {
+            this.encryptionKey = key
+            this.encryptionSalt = salt
+            this.encryptionTestMode = testMode
+        }
+
+        fun withAuthentication(token: String? = null, apiKey: String? = null) = apply {
+            this.authToken = token
+            this.apiKey = apiKey
+        }
+
+        fun withTimeout(seconds: Long) = apply {
+            this.timeoutSeconds = seconds
+        }
+
+        fun withLogging(enabled: Boolean) = apply {
+            this.enableLogging = enabled
+        }
+
+        fun withHeaders(headers: Map<String, String>) = apply {
+            this.additionalHeaders = headers
+        }
+
+        fun withRetry(count: Int) = apply {
+            this.retryCount = count
+        }
+
+        fun withSSL(enabled: Boolean, certificatePins: List<String> = emptyList()) = apply {
+            this.useSSL = enabled
+            this.certificatePinning = certificatePins
+        }
+
+        fun withCache(durationSeconds: Int, forceCache: Boolean = false, size: Long = DEFAULT_CACHE_SIZE) = apply {
+            this.cacheDurationSeconds = durationSeconds
+            this.forceCacheEnabled = forceCache
+            this.cacheSize = size
+        }
+
+        fun build() = Configuration(
             baseUrl = baseUrl,
             encryptionKey = encryptionKey,
             encryptionSalt = encryptionSalt,
@@ -107,14 +136,27 @@ object EasyConnectionClient {
             useSSL = useSSL,
             certificatePinning = certificatePinning,
             cacheDurationSeconds = cacheDurationSeconds,
-            forceCacheEnabled = forceCacheEnabled
+            forceCacheEnabled = forceCacheEnabled,
+            cacheSize = cacheSize
         )
-
-        initialize(config)
     }
 
     /**
-     * Initialize with Configuration object
+     * Initialize the SDK with application context for cache support
+     */
+    fun init(context: Context) {
+        appContext = context.applicationContext
+    }
+
+    /**
+     * Set a custom dispatcher for coroutines (useful for testing)
+     */
+    fun setDispatcher(dispatcher: CoroutineDispatcher) {
+        this.dispatcher = dispatcher
+    }
+
+    /**
+     * Initialize the client with a Configuration object
      */
     fun initialize(configuration: Configuration) {
         this.configuration = configuration
@@ -150,7 +192,6 @@ object EasyConnectionClient {
             clientBuilder.addInterceptor(AuthInterceptor(it))
         }
 
-        // Update the encryption interceptor creation in your initialize(configuration) method
         // Add encryption interceptor if key is provided
         configuration.encryptionKey?.let {
             val salt = configuration.encryptionSalt ?: ""
@@ -204,6 +245,14 @@ object EasyConnectionClient {
     }
 
     /**
+     * Simplified initialize method that uses the Builder pattern
+     */
+    fun initialize(baseUrl: String, block: Builder.() -> Unit = {}) {
+        val builder = Builder(baseUrl).apply(block)
+        initialize(builder.build())
+    }
+
+    /**
      * Create an implementation of the API endpoints defined by the service interface.
      *
      * @param service The service class containing API endpoint definitions
@@ -211,16 +260,17 @@ object EasyConnectionClient {
      * @throws IllegalStateException if initialize() wasn't called before this method
      */
     fun <T> createService(service: Class<T>): T {
-        return retrofit?.create(service) ?: throw IllegalStateException(
-            "EasyConnectionClient not initialized. Call initialize() first."
-        )
+        return retrofit?.create(service) ?: throw IllegalStateException(ERROR_NOT_INITIALIZED)
     }
 
     /**
      * Helper function to safely execute API calls and handle errors
      */
-    suspend fun <T> safeApiCall(apiCall: suspend () -> Response<T>): ApiResponse<T> {
-        return withContext(Dispatchers.IO) {
+    suspend fun <T> safeApiCall(
+        apiCall: suspend () -> Response<T>,
+        customDispatcher: CoroutineDispatcher = dispatcher
+    ): ApiResponse<T> {
+        return withContext(customDispatcher) {
             try {
                 val response = apiCall()
                 if (response.isSuccessful) {
@@ -253,9 +303,7 @@ object EasyConnectionClient {
      * Update configuration after initialization
      */
     fun updateConfiguration(update: (Configuration) -> Configuration) {
-        val currentConfig = configuration ?: throw IllegalStateException(
-            "EasyConnectionClient not initialized. Call initialize() first."
-        )
+        val currentConfig = configuration ?: throw IllegalStateException(ERROR_NOT_INITIALIZED)
         initialize(update(currentConfig))
     }
 
@@ -277,8 +325,6 @@ object EasyConnectionClient {
      * Get current configuration
      */
     fun getConfiguration(): Configuration {
-        return configuration ?: throw IllegalStateException(
-            "EasyConnectionClient not initialized. Call initialize() first."
-        )
+        return configuration ?: throw IllegalStateException(ERROR_NOT_INITIALIZED)
     }
 }
